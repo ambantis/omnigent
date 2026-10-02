@@ -1,29 +1,12 @@
-"""E2E: ``omnigent codex`` must honor an ambient Codex-native Bedrock config.
+"""E2E: ``omnigent codex`` honors an ambient Codex-native built-in Bedrock config.
 
-Reported journey: Codex CLI itself is configured for its **built-in** Amazon
-Bedrock provider via ``~/.codex/config.toml``::
-
-    model = "openai.gpt-5.6-terra"
-    model_provider = "amazon-bedrock"
-
-    [model_providers.amazon-bedrock.aws]
-    region = "us-east-1"
-
-No Omnigent provider is configured and Codex holds no ChatGPT login. Plain
-``codex`` runs fine against this config (Codex resolves the AWS credential
-chain itself), so ``omnigent codex`` must route through it too: no turn error
-may claim that no provider routes the codex harness. A launch router that
-ignores the ambient built-in-provider config instead marks the launch
-``login_required`` and the first chat message dies with::
-
-    inner executor error: Codex native thread never started: Codex is not
-    signed in and no Omnigent provider routes the codex harness, so the
-    Codex TUI is parked on its sign-in screen and cannot run this turn. ...
-
-The rig mirrors ``test_codex_native_headless_login_timeout.py`` (own server +
-runner so the redirected ``HOME`` / ``OMNIGENT_CONFIG_HOME`` cannot leak into
-other tests), with the reporter's Bedrock ``config.toml`` written into the
-rig's ``~/.codex`` and no ``auth.json`` (Codex not signed in).
+With ``~/.codex/config.toml`` selecting ``model_provider = "amazon-bedrock"``, no
+Omnigent provider and no Codex login, plain ``codex`` runs (Codex resolves the
+AWS credential chain itself). ``omnigent codex`` must route the same way instead
+of failing the first turn with "Codex is not signed in and no Omnigent provider
+routes the codex harness". The rig mirrors
+``test_codex_native_headless_login_timeout.py``: a dedicated server + runner
+under a redirected ``HOME`` so nothing leaks into other tests.
 """
 
 from __future__ import annotations
@@ -55,18 +38,14 @@ pytestmark = pytest.mark.skipif(
     reason="codex-native e2e needs the `codex` CLI and `tmux` on PATH.",
 )
 
-# Boot budget for the spawned server + runner pair.
 _HEALTH_TIMEOUT_S = 60.0
-# The buggy path fails fast (pre-recorded bridge startup error); a fixed
-# routing starts the Codex thread within the TUI boot budget, so leave room
-# for either outcome plus rig jitter.
+# Room for either the buggy fail-fast or a fixed launch reaching Codex thread start.
 _TURN_OUTCOME_TIMEOUT_S = 150.0
 _ERROR_PILL = '[data-testid="error-pill"]'
 _ASSISTANT = '[data-testid="message-bubble"][data-role="assistant"]'
 _USER = '[data-testid="message-bubble"][data-role="user"]'
 
-# The reporter's exact ambient Codex config: the built-in Bedrock provider,
-# selected as the effective model_provider, with its supported aws overrides.
+# The reporter's exact ambient Codex config.
 _AMBIENT_BEDROCK_CONFIG = """\
 model = "openai.gpt-5.6-terra"
 model_provider = "amazon-bedrock"
@@ -75,13 +54,9 @@ model_provider = "amazon-bedrock"
 region = "us-east-1"
 """
 
-# A chat turn's executor failure is surfaced into the transcript with this
-# prefix; pre-turn rig notices (e.g. the policy-hook error item) lack it.
+# Turn executor failures carry this prefix; pre-turn rig notices do not.
 _TURN_EXECUTOR_ERROR = "inner executor error"
-
-# Markers of the reported failure in the turn's executor error text: the
-# login fail-fast body and the launch-routing summary it embeds. Both claim
-# nothing routes the codex harness, which is false with the ambient config.
+# Both claim nothing routes the codex harness, which the ambient config refutes.
 _NO_ROUTE_MARKER = "no Omnigent provider routes the codex harness"
 _NO_PROVIDER_SUMMARY_MARKER = "no provider configured for the codex harness"
 
@@ -92,27 +67,19 @@ def _free_port() -> int:
         return sock.getsockname()[1]
 
 
-# Proxy-blind client: CI forces an egress proxy via HTTP(S)_PROXY env vars
-# that must not intercept loopback requests to the spawned server.
+# CI forces an egress proxy; loopback requests to the spawned server must bypass it,
+# including the env-trusting httpx calls in shared conftest helpers.
 _client = httpx.Client(trust_env=False)
-
-# Shared fixtures/helpers (e.g. the conftest session factory) use ambient
-# ``httpx`` calls that DO trust env, so also exclude loopback from any forced
-# proxy at import time.
 for _var in ("NO_PROXY", "no_proxy"):
     os.environ[_var] = ",".join(filter(None, [os.environ.get(_var, ""), "127.0.0.1,localhost"]))
 
 
 def _clean_env() -> dict[str, str]:
-    """Ambient env with loopback proxy-excluded and routing inputs stripped.
+    """Ambient env with loopback proxy-excluded and launch-routing inputs stripped.
 
-    Stripping ``OMNIGENT_RUNNER_*`` / ``OMNIGENT_HOST_*`` matters when the
-    test itself runs inside a server-spawned runner: leaked zygote/tunnel
-    vars make the spawned child runner take the zygote-fork path and hang.
-    Vendor API keys and ``CODEX_HOME`` are stripped because they are launch-
-    routing inputs: a leaked ``OPENAI_API_KEY`` would give the codex harness
-    an ambient provider and mask the no-provider state under test, and a
-    leaked ``CODEX_HOME`` would bypass the rig's ``~/.codex``.
+    Leaked ``OMNIGENT_RUNNER_*`` / ``OMNIGENT_HOST_*`` vars would send the child
+    runner down the zygote-fork path; vendor keys and ``CODEX_HOME`` would mask
+    the no-provider state under test.
     """
     env = os.environ.copy()
     for var in ("NO_PROXY", "no_proxy"):
@@ -137,12 +104,7 @@ def _clean_env() -> dict[str, str]:
 
 
 def _codex_thread_started(bridge_root: Path, session_id: str) -> bool:
-    """Whether the runner recorded a started Codex thread for *session_id*.
-
-    The runner writes the bridge ``state.json`` (with a ``thread_id``) only
-    after the Codex TUI actually started a thread — the exact thing a launch
-    parked on the sign-in screen never does.
-    """
+    """Whether the runner's bridge ``state.json`` records a started Codex thread."""
     for state_file in bridge_root.glob("*/state.json"):
         try:
             payload = json.loads(state_file.read_text(encoding="utf-8"))
@@ -158,18 +120,13 @@ def ambient_bedrock_codex_session(
     built_spa: None,
     tmp_path_factory: pytest.TempPathFactory,
 ) -> Iterator[tuple[str, str, Path]]:
-    """A codex-native wrapper session on a rig with an ambient Bedrock config.
+    """A codex-native wrapper session on a rig carrying the ambient Bedrock config.
 
-    Spawns a dedicated server + runner whose ``HOME`` carries the reporter's
-    ``~/.codex/config.toml`` (built-in ``amazon-bedrock`` selected as the
-    effective provider) and **no** ``auth.json`` (Codex not signed in), with
-    an empty ``OMNIGENT_CONFIG_HOME`` (no Omnigent provider configured), then
-    creates and binds the same codex-native wrapper session ``omnigent
-    codex`` ships. This is the reported launch-routing state.
+    The dedicated server + runner see a ``HOME`` with the Bedrock ``config.toml``
+    and no ``auth.json``, plus an empty ``OMNIGENT_CONFIG_HOME``.
 
-    :returns: ``(base_url, session_id, home_dir)`` — *home_dir* is the
-        rig's redirected ``HOME``, whose ``.omnigent/codex-native`` bridge
-        state records whether the Codex thread started.
+    :returns: ``(base_url, session_id, home_dir)``; *home_dir* holds the
+        ``.omnigent/codex-native`` bridge state that records thread start.
     """
     work = tmp_path_factory.mktemp("codex_ambient_bedrock")
     config_home = work / "config-home"
@@ -247,14 +204,12 @@ def ambient_bedrock_codex_session(
         while time.monotonic() < deadline:
             if server_proc.poll() is not None or runner_proc.poll() is not None:
                 break
-            try:
+            with contextlib.suppress(httpx.HTTPError):
                 if _client.get(f"{base_url}/health", timeout=2).status_code == 200:
                     status = _client.get(f"{base_url}/v1/runners/{runner_id}/status", timeout=2)
                     if status.status_code == 200 and status.json().get("online"):
                         online = True
                         break
-            except httpx.HTTPError:
-                pass
             time.sleep(0.5)
         if not online:
             raise RuntimeError(
@@ -290,37 +245,23 @@ def test_ambient_bedrock_codex_config_routes_the_native_launch(
 ) -> None:
     """The first chat turn must not die on the "nothing routes codex" fail-fast.
 
-    Journey (the reported one): with Codex's own ``~/.codex/config.toml``
-    selecting the built-in ``amazon-bedrock`` provider and no Omnigent
-    provider configured, open the codex-native session ``omnigent codex``
-    creates and send the first message. While the bug is live the launch
-    router ignores the ambient config, marks the launch ``login_required``,
-    and the turn fails immediately with "Codex is not signed in and no
-    Omnigent provider routes the codex harness ... Launch routing: Codex CLI
-    login (no provider configured for the codex harness, no Databricks
-    profile)" — rendered by the SPA as an error pill. After a fix the launch
-    routes through the ambient Bedrock config, so no turn error may claim
-    that nothing routes the codex harness.
+    While the bug is live the launch router ignores the ambient config, marks the
+    launch ``login_required``, and the turn fails within seconds with an error
+    pill; after the fix the launch routes through Bedrock and a thread starts.
     """
     base_url, session_id, home_dir = ambient_bedrock_codex_session
     page.goto(f"{base_url}/c/{session_id}")
     _ensure_chat_view(page)
 
-    # The rig can surface pre-turn error items (e.g. the policy-hook notice
-    # for the bridged config), so count pills before the send to tell the
-    # turn's own outcome apart from pre-existing noise.
+    # Pre-turn rig notices may already show error pills; count them to isolate the turn.
     pre_error_pills = page.locator(_ERROR_PILL).count()
 
     _send(page, "Reply with just the word OK.")
     sent_at = time.monotonic()
     expect(page.locator(_USER).first).to_be_visible(timeout=30_000)
 
-    # Wait for evidence of the launch routing. A terminal turn outcome (an
-    # assistant reply, or an executor turn error — the buggy fail-fast lands
-    # here within seconds) settles it; so does the Codex thread starting,
-    # because a machine without live AWS credentials may keep the routed
-    # Bedrock turn in flight longer than any CI budget. Pre-existing rig
-    # notices are not turn outcomes and must not satisfy this wait.
+    # A terminal turn outcome settles the wait; so does the thread starting, since a
+    # rig without live AWS credentials may keep the routed Bedrock turn in flight.
     bridge_root = home_dir / ".omnigent" / "codex-native"
     deadline = time.monotonic() + _TURN_OUTCOME_TIMEOUT_S
     settled = False
@@ -344,9 +285,7 @@ def test_ambient_bedrock_codex_config_routes_the_native_launch(
         time.sleep(1.0)
     elapsed = time.monotonic() - sent_at
 
-    # Give the SPA a moment to render the outcome (error pill / assistant
-    # bubble) so a recorded run films the user-visible failure. Best-effort:
-    # the durable assertions below run against the canonical transcript.
+    # Best-effort render wait so a recorded run films the user-visible outcome.
     render_deadline = time.monotonic() + 30.0
     while time.monotonic() < render_deadline:
         if (
@@ -363,9 +302,8 @@ def test_ambient_bedrock_codex_config_routes_the_native_launch(
         f"transcript errors so far: {error_messages}"
     )
 
-    # THE BUG: no turn error may claim that no provider routes the codex
-    # harness — the ambient config.toml selects Codex's own self-sufficient
-    # built-in Bedrock provider, exactly like the plain `codex` CLI it drives.
+    # The ambient config selects a self-sufficient built-in provider, so no turn
+    # error may claim that nothing routes the codex harness.
     unrouted = [
         message
         for message in error_messages
@@ -377,8 +315,7 @@ def test_ambient_bedrock_codex_config_routes_the_native_launch(
         f"if nothing routes the codex harness: {unrouted[0][:500]}"
     )
 
-    # The routed launch must actually get past any sign-in screen: settling
-    # on a different startup error is still a broken journey.
+    # Settling on a different startup error is still a broken journey.
     thread_started = thread_started or _codex_thread_started(bridge_root, session_id)
     assert thread_started or any(item.get("role") == "assistant" for item in data), (
         "the codex-native launch never started a thread despite the ambient "

@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 from omnigent.cli_invocation import cli_invocation
 from omnigent.harnesses.codex_native.bridge import write_policy_hook_config
 from omnigent.harnesses.codex_native.launch_args import (
+    _merge_tables,
     _write_private_config,
     absolute_codex_path,
     canonical_codex_launch_args,
@@ -3523,16 +3524,11 @@ def _codex_login_usable() -> bool:
     return codex_auth_has_credential(_codex_home_config_source_from_env() / "auth.json")
 
 
-def _ambient_builtin_codex_provider() -> str | None:
-    """The bridged config.toml's self-sufficient built-in provider, if selected.
+def _ambient_builtin_codex_provider(config_profile: str | None) -> str | None:
+    """Built-in provider the bridged config selects without any Codex login, if any.
 
-    Reads the same ``config.toml`` the launched Codex process will use (the
-    bridged ``CODEX_HOME`` source). When it selects a built-in non-OpenAI
-    provider (e.g. ``amazon-bedrock``), Codex authenticates that provider
-    itself — a plain ``codex`` run works with no ChatGPT login — so the launch
-    can route through it instead of falling to a doomed login screen.
-
-    :returns: The built-in provider id, e.g. ``"amazon-bedrock"``, or ``None``.
+    Layers the selected ``<profile>.config.toml`` over ``config.toml`` the way
+    :func:`materialize_codex_config_profile` does at start (codex >= 0.134).
     """
     from omnigent.inner.codex_executor import _codex_home_config_source_from_env
     from omnigent.onboarding.codex_auth_readiness import (
@@ -3540,9 +3536,15 @@ def _ambient_builtin_codex_provider() -> str | None:
         load_codex_config,
     )
 
-    config = load_codex_config(_codex_home_config_source_from_env() / "config.toml")
+    source_home = _codex_home_config_source_from_env()
+    config = load_codex_config(source_home / "config.toml")
     if config is None:
         return None
+    if config_profile is not None:
+        overlay = load_codex_config(source_home / f"{config_profile}.config.toml")
+        if overlay is None:
+            return None
+        _merge_tables(config, overlay)
     return effective_self_sufficient_builtin_provider(config)
 
 
@@ -3607,7 +3609,10 @@ def _resolve_subscription_launch(
 
 
 def resolve_native_codex_launch(
-    *, model: str | None, spec: AgentSpec | None = None
+    *,
+    model: str | None,
+    spec: AgentSpec | None = None,
+    terminal_launch_args: Sequence[str] = (),
 ) -> NativeCodexLaunch:
     """Resolve the native Codex launch config across all offerings.
 
@@ -3638,7 +3643,8 @@ def resolve_native_codex_launch(
        overrides for an inline API key;
     3. else an ambient-detected provider (first run without configure);
     4. else a self-sufficient built-in provider the bridged ``config.toml``
-       selects (e.g. ``amazon-bedrock`` — Codex authenticates it itself);
+       selects, read through the ``--profile`` in *terminal_launch_args*
+       (e.g. ``amazon-bedrock`` — Codex authenticates it itself);
     5. else the codex CLI's own login.
 
     Without a *spec* (or when the spec carries no spec-level credential),
@@ -3651,6 +3657,9 @@ def resolve_native_codex_launch(
     :param spec: The custom agent spec launching this session, when there is
         one, so its ``executor.auth`` / legacy profile win over machine-level
         config (issue #2744 — parity with the in-process codex harness).
+    :param terminal_launch_args: Codex CLI pass-through args; their
+        ``--profile`` selects the config-file layer the bridged config is read
+        through, as :func:`build_codex_native_server` applies it at start.
     :returns: The resolved :class:`NativeCodexLaunch`.
     """
     from omnigent.inference_config import (
@@ -3833,7 +3842,9 @@ def resolve_native_codex_launch(
             )
 
     if entry is None:
-        ambient_builtin = _ambient_builtin_codex_provider()
+        ambient_builtin = _ambient_builtin_codex_provider(
+            codex_config_profile(terminal_launch_args)
+        )
         if ambient_builtin is not None:
             log_info_once(
                 _logger,

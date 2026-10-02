@@ -1086,11 +1086,8 @@ def materialize_codex_provider_config(
     commands. Persist them in the session-owned ``config.toml`` instead so
     process arguments contain only non-secret routing and behavior overrides.
 
-    Built-in provider tables (e.g. ``[model_providers.amazon-bedrock]``) are
-    left untouched: Codex allows only limited overrides on them (Bedrock:
-    ``aws.profile`` / ``aws.region``) and reacts to any other field by
-    discarding the **whole** config ("Invalid configuration; using defaults"),
-    which would strand the session on the sign-in screen.
+    Built-in provider tables (e.g. ``[model_providers.amazon-bedrock]``) stay
+    untouched: Codex rejects unsupported fields there by discarding the whole config.
 
     :param codex_home: Private session ``CODEX_HOME`` directory.
     :param config_overrides: Pending Codex config override strings.

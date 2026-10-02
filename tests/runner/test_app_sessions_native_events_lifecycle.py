@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import sys
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
@@ -1114,8 +1114,12 @@ async def test_codex_model_catalog_writeback_uses_session_provider(
         return spec
 
     def resolve_launch(
-        *, model: str | None, spec: AgentSpec | None = None
+        *,
+        model: str | None,
+        spec: AgentSpec | None = None,
+        terminal_launch_args: Sequence[str] = (),
     ) -> codex.NativeCodexLaunch:
+        del terminal_launch_args
         if case == "invalid-config":
             raise RuntimeError("provider configuration unavailable")
         selected = spec.executor.auth.profile if spec is not None else "default"

@@ -3899,14 +3899,7 @@ def test_materialize_codex_provider_config_applies_custom_retry_policy(tmp_path:
 def test_materialize_codex_provider_config_leaves_builtin_provider_tables_untouched(
     tmp_path: Path,
 ) -> None:
-    """Built-in provider tables stay codex-valid: no retry stamping.
-
-    Codex allows only ``aws.profile`` / ``aws.region`` overrides on its
-    built-in ``amazon-bedrock`` table and reacts to any other field by
-    discarding the whole config ("Invalid configuration; using defaults"),
-    which would strand the session on the sign-in screen. Custom tables in
-    the same config still receive the retry budget.
-    """
+    """Built-in provider tables get no retry stamping; custom tables in the same config do."""
     import tomllib
 
     from omnigent.inner.codex_executor import materialize_codex_provider_config

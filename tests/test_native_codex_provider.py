@@ -18,7 +18,10 @@ import tomllib
 import yaml
 
 from omnigent.errors import OmnigentError
-from omnigent.harnesses.codex_native.app_server import resolve_native_codex_launch
+from omnigent.harnesses.codex_native.app_server import (
+    codex_session_meta_model_provider,
+    resolve_native_codex_launch,
+)
 from omnigent.inner.codex_executor import _provider_codex_config_overrides
 from omnigent.spec.types import AgentSpec, ApiKeyAuth, ExecutorSpec, ProviderAuth
 
@@ -910,15 +913,20 @@ def _write_ambient_codex_config(home: Path, content: str) -> None:
     (codex_dir / "config.toml").write_text(content, encoding="utf-8")
 
 
+def _write_ambient_codex_profile(home: Path, name: str, content: str) -> None:
+    """Write the ``~/.codex/<name>.config.toml`` file profile ``--profile`` selects."""
+    (home / ".codex" / f"{name}.config.toml").write_text(content, encoding="utf-8")
+
+
+_AMBIENT_BEDROCK_CONFIG = (
+    'model = "openai.gpt-5.6-terra"\nmodel_provider = "amazon-bedrock"\n\n'
+    '[model_providers.amazon-bedrock.aws]\nregion = "us-east-1"\n'
+)
+
+
 @pytest.mark.parametrize("provider_id", ["amazon-bedrock", "ollama"])
 def test_ambient_builtin_provider_routes_without_login(_isolated: Path, provider_id: str) -> None:
-    """A config.toml selecting a self-sufficient built-in provider routes the launch.
-
-    Codex authenticates its built-in non-OpenAI providers itself (Bedrock via
-    the AWS credential chain), so with no Omnigent provider and no Codex login
-    the launch must route through that config — exactly like a plain ``codex``
-    run — instead of a doomed ``login_required`` sign-in screen.
-    """
+    """A config.toml selecting a self-sufficient built-in provider routes like plain ``codex``."""
     _write_ambient_codex_config(
         _isolated,
         f'model = "openai.gpt-5.6-terra"\nmodel_provider = "{provider_id}"\n\n'
@@ -935,7 +943,7 @@ def test_ambient_builtin_provider_routes_without_login(_isolated: Path, provider
 
 
 def test_ambient_openai_selection_still_marks_login_required(_isolated: Path) -> None:
-    """An explicit built-in ``openai`` selection is Codex's own login — still doomed."""
+    """An explicit built-in ``openai`` selection still defers to Codex's own login."""
     _write_ambient_codex_config(_isolated, 'model_provider = "openai"\nmodel = "gpt-5.4"\n')
 
     launch = resolve_native_codex_launch(model=None)
@@ -961,6 +969,37 @@ def test_configured_provider_wins_over_ambient_builtin(_isolated: Path) -> None:
     launch = resolve_native_codex_launch(model=None)
 
     assert "vendor" in launch.summary
+    assert launch.login_required is False
+
+
+@pytest.mark.parametrize("logged_in", [False, True])
+def test_explicit_profile_selecting_openai_overrides_ambient_builtin(
+    _isolated: Path, logged_in: bool
+) -> None:
+    """``--profile`` selecting ``openai`` keeps Codex's own login over an ambient Bedrock base."""
+    _write_ambient_codex_config(_isolated, _AMBIENT_BEDROCK_CONFIG)
+    _write_ambient_codex_profile(
+        _isolated, "openai", 'model_provider = "openai"\nmodel = "gpt-5.4"\n'
+    )
+    _write_codex_login(_isolated, logged_in=logged_in)
+
+    launch = resolve_native_codex_launch(model=None, terminal_launch_args=["--profile", "openai"])
+
+    assert "Codex CLI login" in launch.summary
+    assert "amazon-bedrock" not in launch.summary
+    assert codex_session_meta_model_provider(launch) == "openai"
+    assert launch.login_required is (not logged_in)
+
+
+def test_explicit_profile_selecting_builtin_routes_without_login(_isolated: Path) -> None:
+    """``--profile`` selecting Bedrock routes the launch when the base config does not."""
+    _write_ambient_codex_config(_isolated, 'model = "gpt-5.4"\n')
+    _write_ambient_codex_profile(_isolated, "bedrock", _AMBIENT_BEDROCK_CONFIG)
+
+    launch = resolve_native_codex_launch(model=None, terminal_launch_args=["-p", "bedrock"])
+
+    assert launch.config_overrides == ['model_provider="amazon-bedrock"']
+    assert codex_session_meta_model_provider(launch) == "amazon-bedrock"
     assert launch.login_required is False
 
 
