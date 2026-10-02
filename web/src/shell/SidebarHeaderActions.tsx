@@ -1,9 +1,15 @@
 import { PanelLeftOpenIcon, PanelRightOpenIcon, SearchIcon, SettingsIcon } from "lucide-react";
 
+import { ALT_KEY, CompactShortcutKeys, MOD_KEY } from "@/components/KeyboardShortcut";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Link } from "@/lib/routing";
 import { cn } from "@/lib/utils";
+
+const SIDEBAR_TOGGLE_KEYS = [MOD_KEY, ALT_KEY, "["] as const;
+const SEARCH_KEYS = [MOD_KEY, "K"] as const;
+const SETTINGS_KEYS = [MOD_KEY, ALT_KEY, ","] as const;
+const ARIA_MOD_KEY = MOD_KEY === "⌘" ? "Meta" : "Control";
 
 /**
  * Search / Settings / sidebar-toggle cluster from the sidebar's header row.
@@ -65,6 +71,7 @@ export function SidebarHeaderActions({
             variant="ghost"
             size="icon-xs"
             aria-label={expanded ? "Close sidebar" : "Open sidebar"}
+            aria-keyshortcuts={`${ARIA_MOD_KEY}+Alt+[`}
             onClick={onToggle}
             onPointerEnter={onTogglePointerEnter}
             onPointerDown={onTogglePointerDown}
@@ -79,14 +86,15 @@ export function SidebarHeaderActions({
             is open; panel-left-open as "bring it back" once it is collapsed or
             merely peeking. */}
             {expanded ? (
-              <PanelRightOpenIcon className="ui-icon" />
+              <PanelRightOpenIcon className="size-4" />
             ) : (
-              <PanelLeftOpenIcon className="ui-icon" />
+              <PanelLeftOpenIcon className="size-4" />
             )}
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="bottom">
-          {expanded ? "Collapse sidebar" : "Open sidebar"}
+        <TooltipContent side="bottom" className="flex items-center gap-1.5">
+          <span>{expanded ? "Collapse sidebar" : "Open sidebar"}</span>
+          <CompactShortcutKeys keys={SIDEBAR_TOGGLE_KEYS} />
         </TooltipContent>
       </Tooltip>
     </div>
@@ -104,7 +112,7 @@ export function SidebarHeaderActions({
 const SIDEBAR_FLOAT_BUTTON =
   "sidebar-glass-chip size-6 text-muted-foreground hover:text-foreground max-md:size-11 max-md:rounded-full max-md:text-foreground";
 
-const SIDEBAR_FLOAT_ICON = "ui-icon max-md:size-[22px]";
+const SIDEBAR_FLOAT_ICON = "size-4 max-md:size-[22px]";
 
 /**
  * Search (command palette) icon button.
@@ -132,6 +140,7 @@ export function SidebarSearchButton({
           variant="ghost"
           size="icon-xs"
           aria-label="Search"
+          aria-keyshortcuts={`${ARIA_MOD_KEY}+K`}
           onClick={() => onOpenSearch?.()}
           className={cn(SIDEBAR_FLOAT_BUTTON, className)}
           data-testid="sidebar-search-button"
@@ -141,7 +150,10 @@ export function SidebarSearchButton({
       </TooltipTrigger>
       {/* Bottom placement keeps the tooltip clear of the macOS Electron
       shell's traffic lights at the window's top edge. */}
-      <TooltipContent side="bottom">Search</TooltipContent>
+      <TooltipContent side="bottom" className="flex items-center gap-1.5">
+        <span>Search</span>
+        <CompactShortcutKeys keys={SEARCH_KEYS} />
+      </TooltipContent>
     </Tooltip>
   );
 }
@@ -165,21 +177,25 @@ export function SidebarSettingsButton({
   testId?: string;
 }) {
   return (
-    <Tooltip>
+    <Tooltip delayDuration={750}>
       <TooltipTrigger asChild>
         <Button
           asChild
           variant="ghost"
           size="icon-xs"
           aria-label="Settings"
-          className={cn(SIDEBAR_FLOAT_BUTTON, className)}
+          aria-keyshortcuts={`${ARIA_MOD_KEY}+Alt+,`}
+          className={cn(SIDEBAR_FLOAT_BUTTON, "rounded-[8px] bg-transparent", className)}
         >
           <Link to="/settings" onClick={onSettingsClick} data-testid={testId}>
             <SettingsIcon className={SIDEBAR_FLOAT_ICON} />
           </Link>
         </Button>
       </TooltipTrigger>
-      <TooltipContent side="bottom">Settings</TooltipContent>
+      <TooltipContent side="bottom" className="flex items-center gap-1.5">
+        <span>Settings</span>
+        <CompactShortcutKeys keys={SETTINGS_KEYS} />
+      </TooltipContent>
     </Tooltip>
   );
 }
