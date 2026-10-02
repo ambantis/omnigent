@@ -3551,7 +3551,6 @@ def _ambient_builtin_codex_provider(config_profile: str | None) -> str | None:
     Layers the selected profile over ``config.toml`` the way
     :func:`materialize_codex_config_profile` does at start.
     """
-    from omnigent.inner.codex_executor import _codex_home_config_source_from_env
     from omnigent.onboarding.codex_auth_readiness import (
         effective_self_sufficient_builtin_provider,
         load_codex_config,

@@ -67,11 +67,8 @@ def _free_port() -> int:
         return sock.getsockname()[1]
 
 
-# CI forces an egress proxy; loopback requests to the spawned server must bypass it,
-# including the env-trusting httpx calls in shared conftest helpers.
+# CI forces an egress proxy; loopback requests to the spawned server must bypass it.
 _client = httpx.Client(trust_env=False)
-for _var in ("NO_PROXY", "no_proxy"):
-    os.environ[_var] = ",".join(filter(None, [os.environ.get(_var, ""), "127.0.0.1,localhost"]))
 
 
 def _clean_env() -> dict[str, str]:
@@ -119,6 +116,7 @@ def _codex_thread_started(bridge_root: Path, session_id: str) -> bool:
 def ambient_bedrock_codex_session(
     built_spa: None,
     tmp_path_factory: pytest.TempPathFactory,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> Iterator[tuple[str, str, Path]]:
     """A codex-native wrapper session on a rig carrying the ambient Bedrock config.
 
@@ -128,6 +126,10 @@ def ambient_bedrock_codex_session(
     :returns: ``(base_url, session_id, home_dir)``; *home_dir* holds the
         ``.omnigent/codex-native`` bridge state that records thread start.
     """
+    # Shared conftest helpers use env-trusting httpx calls; keep loopback off any proxy.
+    for var in ("NO_PROXY", "no_proxy"):
+        loopback = ",".join(filter(None, [os.environ.get(var, ""), "127.0.0.1,localhost"]))
+        monkeypatch.setenv(var, loopback)
     work = tmp_path_factory.mktemp("codex_ambient_bedrock")
     config_home = work / "config-home"
     home_dir = work / "home"
@@ -266,11 +268,15 @@ def test_ambient_bedrock_codex_config_routes_the_native_launch(
     deadline = time.monotonic() + _TURN_OUTCOME_TIMEOUT_S
     settled = False
     thread_started = False
+    data: list[dict[str, object]] = []
     error_messages: list[str] = []
     while time.monotonic() < deadline:
-        items = _client.get(f"{base_url}/v1/sessions/{session_id}/items?limit=50", timeout=10.0)
-        items.raise_for_status()
-        data = items.json()["data"]
+        with contextlib.suppress(httpx.HTTPError):
+            items = _client.get(
+                f"{base_url}/v1/sessions/{session_id}/items?limit=50", timeout=10.0
+            )
+            items.raise_for_status()
+            data = items.json()["data"]
         error_messages = [
             str(item.get("message", "")) for item in data if item.get("type") == "error"
         ]
