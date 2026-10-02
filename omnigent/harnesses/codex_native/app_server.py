@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import copy
 import hashlib
 import json
 import logging
@@ -3544,12 +3545,13 @@ def _ambient_builtin_codex_provider(config_profile: str | None) -> str | None:
     if config_profile is not None:
         overlay = load_codex_config(source_home / f"{config_profile}.config.toml")
         if overlay is None:
-            # Codex < 0.134 keeps file profiles as inline ``[profiles.<name>]`` tables.
+            # Codex < 0.134 keeps file profiles inline; newer codex fails at start on a
+            # missing file anyway, so the fallback only matters where it is correct.
             profiles = config.get("profiles")
             overlay = profiles.get(config_profile) if isinstance(profiles, dict) else None
         if not isinstance(overlay, dict):
             return None
-        _merge_tables(config, overlay)
+        _merge_tables(config, copy.deepcopy(overlay))
     return effective_self_sufficient_builtin_provider(config)
 
 

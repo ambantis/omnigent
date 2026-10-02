@@ -39,13 +39,13 @@ pytestmark = pytest.mark.skipif(
 )
 
 _HEALTH_TIMEOUT_S = 60.0
-# Room for either the buggy fail-fast or a fixed launch reaching Codex thread start.
+# Allow time for the turn to either fail terminally or reach Codex thread start.
 _TURN_OUTCOME_TIMEOUT_S = 150.0
 _ERROR_PILL = '[data-testid="error-pill"]'
 _ASSISTANT = '[data-testid="message-bubble"][data-role="assistant"]'
 _USER = '[data-testid="message-bubble"][data-role="user"]'
 
-# The reporter's exact ambient Codex config.
+# Ambient config selecting the self-sufficient built-in Bedrock provider.
 _AMBIENT_BEDROCK_CONFIG = """\
 model = "openai.gpt-5.6-terra"
 model_provider = "amazon-bedrock"
