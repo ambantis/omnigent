@@ -3527,8 +3527,8 @@ def _codex_login_usable() -> bool:
 def _ambient_builtin_codex_provider(config_profile: str | None) -> str | None:
     """Built-in provider the bridged config selects without any Codex login, if any.
 
-    Layers the selected ``<profile>.config.toml`` over ``config.toml`` the way
-    :func:`materialize_codex_config_profile` does at start (codex >= 0.134).
+    Layers the selected profile over ``config.toml`` the way
+    :func:`materialize_codex_config_profile` does at start.
     """
     from omnigent.inner.codex_executor import _codex_home_config_source_from_env
     from omnigent.onboarding.codex_auth_readiness import (
@@ -3537,12 +3537,17 @@ def _ambient_builtin_codex_provider(config_profile: str | None) -> str | None:
     )
 
     source_home = _codex_home_config_source_from_env()
-    config = load_codex_config(source_home / "config.toml")
+    config_path = source_home / "config.toml"
+    config = load_codex_config(config_path) if config_path.exists() else {}
     if config is None:
         return None
     if config_profile is not None:
         overlay = load_codex_config(source_home / f"{config_profile}.config.toml")
         if overlay is None:
+            # Codex < 0.134 keeps file profiles as inline ``[profiles.<name>]`` tables.
+            profiles = config.get("profiles")
+            overlay = profiles.get(config_profile) if isinstance(profiles, dict) else None
+        if not isinstance(overlay, dict):
             return None
         _merge_tables(config, overlay)
     return effective_self_sufficient_builtin_provider(config)
@@ -3842,9 +3847,12 @@ def resolve_native_codex_launch(
             )
 
     if entry is None:
-        ambient_builtin = _ambient_builtin_codex_provider(
-            codex_config_profile(terminal_launch_args)
-        )
+        try:
+            ambient_profile = codex_config_profile(terminal_launch_args)
+        except ValueError:
+            # Malformed selectors are reported where launch args are validated, at start.
+            ambient_profile = None
+        ambient_builtin = _ambient_builtin_codex_provider(ambient_profile)
         if ambient_builtin is not None:
             log_info_once(
                 _logger,

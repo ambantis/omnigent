@@ -915,7 +915,9 @@ def _write_ambient_codex_config(home: Path, content: str) -> None:
 
 def _write_ambient_codex_profile(home: Path, name: str, content: str) -> None:
     """Write the ``~/.codex/<name>.config.toml`` file profile ``--profile`` selects."""
-    (home / ".codex" / f"{name}.config.toml").write_text(content, encoding="utf-8")
+    codex_dir = home / ".codex"
+    codex_dir.mkdir(parents=True, exist_ok=True)
+    (codex_dir / f"{name}.config.toml").write_text(content, encoding="utf-8")
 
 
 _AMBIENT_BEDROCK_CONFIG = (
@@ -991,9 +993,13 @@ def test_explicit_profile_selecting_openai_overrides_ambient_builtin(
     assert launch.login_required is (not logged_in)
 
 
-def test_explicit_profile_selecting_builtin_routes_without_login(_isolated: Path) -> None:
-    """``--profile`` selecting Bedrock routes the launch when the base config does not."""
-    _write_ambient_codex_config(_isolated, 'model = "gpt-5.4"\n')
+@pytest.mark.parametrize("base_config", ['model = "gpt-5.4"\n', None])
+def test_explicit_profile_selecting_builtin_routes_without_login(
+    _isolated: Path, base_config: str | None
+) -> None:
+    """``--profile`` selecting Bedrock routes the launch whether or not a base config exists."""
+    if base_config is not None:
+        _write_ambient_codex_config(_isolated, base_config)
     _write_ambient_codex_profile(_isolated, "bedrock", _AMBIENT_BEDROCK_CONFIG)
 
     launch = resolve_native_codex_launch(model=None, terminal_launch_args=["-p", "bedrock"])
@@ -1001,6 +1007,38 @@ def test_explicit_profile_selecting_builtin_routes_without_login(_isolated: Path
     assert launch.config_overrides == ['model_provider="amazon-bedrock"']
     assert codex_session_meta_model_provider(launch) == "amazon-bedrock"
     assert launch.login_required is False
+
+
+def test_explicit_legacy_profile_table_routes_without_login(_isolated: Path) -> None:
+    """The legacy inline ``[profiles.<name>]`` table is layered when no file profile exists."""
+    _write_ambient_codex_config(
+        _isolated, 'model = "gpt-5.4"\n\n[profiles.bedrock]\nmodel_provider = "amazon-bedrock"\n'
+    )
+
+    launch = resolve_native_codex_launch(model=None, terminal_launch_args=["--profile", "bedrock"])
+
+    assert launch.config_overrides == ['model_provider="amazon-bedrock"']
+    assert launch.login_required is False
+
+
+def test_unknown_profile_does_not_pin_ambient_builtin(_isolated: Path) -> None:
+    """A profile that exists nowhere leaves the ambient tier alone; start-up reports it."""
+    _write_ambient_codex_config(_isolated, _AMBIENT_BEDROCK_CONFIG)
+
+    launch = resolve_native_codex_launch(model=None, terminal_launch_args=["--profile", "nope"])
+
+    assert launch.config_overrides == []
+    assert "no provider configured" in launch.summary
+    assert launch.login_required is True
+
+
+def test_malformed_profile_selector_defers_to_launch_arg_validation(_isolated: Path) -> None:
+    """A malformed ``--profile`` does not abort routing; start-up validation reports it."""
+    _write_ambient_codex_config(_isolated, _AMBIENT_BEDROCK_CONFIG)
+
+    launch = resolve_native_codex_launch(model=None, terminal_launch_args=["--profile"])
+
+    assert launch.config_overrides == ['model_provider="amazon-bedrock"']
 
 
 def test_global_api_key_routes_without_model_or_cli_login(
