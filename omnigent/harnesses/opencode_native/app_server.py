@@ -115,10 +115,20 @@ def find_opencode_cli(opencode_path: str | None = None) -> str:
     """
     Resolve the ``opencode`` executable.
 
-    :param opencode_path: Explicit path override; ``None`` searches ``PATH``.
+    :param opencode_path: Explicit path override; ``None`` uses the configured
+        command (``OMNIGENT_OPENCODE_PATH`` or ``harness.opencode-native.command``),
+        else searches ``PATH``.
     :returns: Absolute path to the ``opencode`` binary.
     :raises OpenCodeCliNotFoundError: When no binary can be resolved.
     """
+    if not opencode_path:
+        from omnigent.config import load_effective_config
+        from omnigent.harness_startup_config import resolve_harness_command
+
+        configured = resolve_harness_command(
+            "opencode-native", default="opencode", cfg=load_effective_config()
+        )
+        opencode_path = configured if configured != "opencode" else None
     if opencode_path:
         if os.path.isabs(opencode_path) and os.access(opencode_path, os.X_OK):
             return opencode_path

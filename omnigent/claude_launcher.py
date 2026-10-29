@@ -118,6 +118,30 @@ def resolve_claude_launch(command: str, args: list[str]) -> tuple[str, list[str]
     return _validated_result(result, name, default)
 
 
+def resolve_claude_cli_launch(args: list[str]) -> tuple[str, list[str]]:
+    """
+    Resolve a non-terminal Claude CLI invocation the way the terminal launch is.
+
+    Model probes and title generation run Claude Code outside the terminal, and
+    must reach the same binary: ``harness.claude-native.command`` / ``args``
+    from config (or ``OMNIGENT_CLAUDE_PATH``), then the launcher plugin.
+
+    :param args: Claude CLI args for this invocation, e.g. ``["-p", "hi"]``.
+    :returns: The ``(command, args)`` to spawn.
+    """
+    from omnigent.config import load_effective_config  # noqa: FlagLocalImports
+    from omnigent.harness_startup_config import (  # noqa: FlagLocalImports
+        resolve_harness_args,
+        resolve_harness_command,
+    )
+
+    cfg = load_effective_config()
+    command = resolve_harness_command("claude-native", default="claude", cfg=cfg)
+    return resolve_claude_launch(
+        command, resolve_harness_args("claude-native", tuple(args), cfg=cfg)
+    )
+
+
 def _load_launcher(name: str) -> ClaudeLauncher | None:
     """
     Resolve and instantiate the launcher registered under *name* via entry points.

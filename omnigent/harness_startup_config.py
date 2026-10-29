@@ -35,6 +35,11 @@ outranks it.
 The wrapper chooses which Codex it runs; ``OMNIGENT_CODEX_PATH`` still names the
 binary Omnigent version-checks and keys the model catalog on, so keep them the same.
 
+``auth`` —
+  ``command`` declares that the configured ``command`` supplies its own
+  credentials, so readiness trusts it instead of looking for the harness's
+  own login or an Omnigent provider. Only honoured alongside ``command``.
+
 Validation is warn+skip: an unknown harness id or a structurally
 malformed entry warns and is ignored, so a bad config never crashes
 ``config list`` / ``doctor`` / every command's config load.
@@ -73,12 +78,18 @@ _LEGACY_PATH_WARNED: set[str] = set()
 _OVERRIDE_KEY_COMMAND = "command"
 _OVERRIDE_KEY_ARGS = "args"
 _OVERRIDE_KEY_APP_SERVER = "app_server"
+_OVERRIDE_KEY_AUTH = "auth"
+
+# ``auth`` values: the configured command authenticates on its own.
+HARNESS_AUTH_COMMAND = "command"
+_HARNESS_AUTH_VALUES = frozenset({HARNESS_AUTH_COMMAND})
 
 
 class _HarnessOverride(TypedDict, total=False):
     command: str
     args: list[str]
     app_server: list[str]
+    auth: str
 
 
 def _canonicalize(harness: str) -> str:
@@ -280,6 +291,13 @@ def _parse_launch_fields(key: str, value: object) -> _HarnessOverride | None:
             parsed["args"] = [arg for arg in args if isinstance(arg, str)]
         else:
             ui.warn(f"config `harness.{key}.args` must be a list of strings — ignoring it.")
+    auth = value.get(_OVERRIDE_KEY_AUTH)
+    if auth is not None:
+        if isinstance(auth, str) and auth.strip() in _HARNESS_AUTH_VALUES:
+            parsed["auth"] = auth.strip()
+        else:
+            allowed = ", ".join(sorted(_HARNESS_AUTH_VALUES))
+            ui.warn(f"config `harness.{key}.auth` must be one of: {allowed} — ignoring it.")
     return parsed
 
 
@@ -401,6 +419,50 @@ def resolve_harness_args(
     return [*base, *cli_args]
 
 
+def configured_harness_command(
+    harness: str,
+    cfg: Mapping[str, object] | None,
+) -> str | None:
+    """Return config's ``harness.<canonical>.command`` for *harness*, if set.
+
+    Config-only: unlike :func:`resolve_harness_command` it ignores the
+    ``OMNIGENT_<NAME>_PATH`` env layer, for callers that already honour it.
+
+    :param harness: A harness id (canonical or alias), e.g. ``"codex-native"``.
+    :param cfg: Effective config dict, or ``None``.
+    :returns: The configured command, or ``None`` when none is set.
+    """
+    if cfg is None:
+        return None
+    _, overrides = resolve_harness_config(cfg)
+    command = (overrides.get(_canonicalize(harness)) or {}).get(_OVERRIDE_KEY_COMMAND)
+    if isinstance(command, str) and command.strip():
+        return command.strip()
+    return None
+
+
+def harness_command_owns_auth(
+    harness: str,
+    cfg: Mapping[str, object] | None,
+) -> bool:
+    """Whether config declares *harness*'s configured command self-authenticating.
+
+    True only when ``harness.<canonical>`` sets both ``command`` and
+    ``auth: command``; an ``auth`` without a command has nothing to trust.
+
+    :param harness: A harness id (canonical or alias), e.g. ``"codex-native"``.
+    :param cfg: Effective config dict, or ``None``.
+    :returns: ``True`` when readiness should trust the configured command.
+    """
+    if cfg is None:
+        return False
+    _, overrides = resolve_harness_config(cfg)
+    entry = overrides.get(_canonicalize(harness)) or {}
+    return bool(entry.get(_OVERRIDE_KEY_COMMAND)) and entry.get(_OVERRIDE_KEY_AUTH) == (
+        HARNESS_AUTH_COMMAND
+    )
+
+
 def config_harness_path_override(
     harness: str,
     cfg: Mapping[str, object],
@@ -437,7 +499,10 @@ def config_harness_path_override(
 
 
 __all__ = [
+    "HARNESS_AUTH_COMMAND",
     "config_harness_path_override",
+    "configured_harness_command",
+    "harness_command_owns_auth",
     "resolve_harness_args",
     "resolve_harness_command",
     "resolve_harness_config",

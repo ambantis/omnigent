@@ -35,6 +35,8 @@ from omnigent.runner.background_titles.service import (
 from omnigent.runtime.harnesses.process_manager import _build_harness_spawn_env
 from tests.runner.helpers import NullServerClient
 
+pytestmark = pytest.mark.usefixtures("isolated_user_config")
+
 
 class _FakeHarnessStream:
     def __init__(self, events: list[dict[str, Any]]) -> None:
@@ -960,7 +962,10 @@ async def test_codex_native_title_uses_ephemeral_tool_free_exec(
     assert title == "Debug authentication timeout"
     assert captured["command"] == "codex"
     args = captured["args"]
-    assert args[0] == "exec"
+    # Config overrides precede ``exec`` so Codex keeps a wrapper's own.
+    exec_at = args.index("exec")
+    assert all(args[i] == "--config" for i in range(0, exec_at, 2))
+    assert "--config" not in args[exec_at:]
     assert "--ephemeral" in args
     assert "--ignore-rules" in args
     assert "--skip-git-repo-check" in args

@@ -17,6 +17,8 @@ from omnigent.onboarding import harness_accounts, harness_login
 from omnigent.onboarding.opencode_auth import OpenCodeAuthSummary
 from tests._helpers.polling import poll_until
 
+pytestmark = pytest.mark.usefixtures("isolated_user_config")
+
 
 def _executable(path: Path, body: str) -> None:
     path.write_text(f"#!{sys.executable}\n{body}")

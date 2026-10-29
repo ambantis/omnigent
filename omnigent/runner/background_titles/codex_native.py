@@ -69,21 +69,11 @@ async def generate_background_title(context: BackgroundTitleContext) -> str | No
             native_server.config_overrides,
         )
         output_path = temp_root / "title.txt"
-        args = [
-            "exec",
-            "--ephemeral",
-            "--ignore-rules",
-            "--skip-git-repo-check",
-            "--sandbox",
-            "read-only",
-            "--output-last-message",
-            str(output_path),
-            "--color",
-            "never",
-        ]
-        for override in native_server.config_overrides:
-            args.extend(("--config", override))
+        # Overrides precede ``exec``: Codex drops root-level ``--config`` flags
+        # when the subcommand gets its own, discarding a configured wrapper's.
+        args: list[str] = []
         for override in (
+            *native_server.config_overrides,
             'approval_policy="never"',
             "features.unified_exec=false",
             "features.shell_tool=false",
@@ -97,6 +87,20 @@ async def generate_background_title(context: BackgroundTitleContext) -> str | No
             "features.tool_search=false",
         ):
             args.extend(("--config", override))
+        args.extend(
+            [
+                "exec",
+                "--ephemeral",
+                "--ignore-rules",
+                "--skip-git-repo-check",
+                "--sandbox",
+                "read-only",
+                "--output-last-message",
+                str(output_path),
+                "--color",
+                "never",
+            ]
+        )
         if launch.model:
             args.extend(("--model", launch.model))
         instructions = build_background_title_instructions(context.additional_instructions)

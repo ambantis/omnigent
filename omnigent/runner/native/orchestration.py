@@ -5181,9 +5181,9 @@ async def _auto_create_codex_terminal(
     from omnigent.inference_config import binding_for_harness, load_runtime_inference_config
 
     codex_binding = binding_for_harness(load_runtime_inference_config(), "codex-native")
-    from omnigent.inner.codex_executor import _find_codex_cli
+    from omnigent.inner.codex_executor import _find_native_codex_cli
 
-    _codex_cli_path = _find_codex_cli()
+    _codex_cli_path = _find_native_codex_cli()
     _catalog_launch = None
     _fresh_codex_catalog: list[_JsonObject] | None = None
     try:

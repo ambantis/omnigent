@@ -713,8 +713,12 @@ module.exports = function(pi) {{
 
 
 def _find_pi_cli() -> str | None:
-    """Find the ``pi`` CLI on PATH."""
-    return shutil.which("pi")
+    """Find the ``pi`` CLI: config ``harness.pi.command``, else ``PATH``."""
+    from omnigent.config import load_effective_config
+    from omnigent.harness_startup_config import configured_harness_command
+
+    command = configured_harness_command("pi", load_effective_config())
+    return shutil.which(command) if command else shutil.which("pi")
 
 
 # ---------------------------------------------------------------------------

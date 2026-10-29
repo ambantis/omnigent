@@ -441,6 +441,25 @@ def _no_configured_codex_app_server_command(
 
 
 @pytest.fixture()
+def isolated_user_config(
+    tmp_path_factory: pytest.TempPathFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep the developer's ``config.yaml`` out of a test.
+
+    ``harness.<id>.command`` / ``auth`` overrides in the real config would
+    otherwise change which binary a test launches and which harnesses look
+    ready. Opt in with ``pytestmark = pytest.mark.usefixtures(...)``; a test
+    that needs a config sets ``OMNIGENT_CONFIG_HOME`` itself.
+
+    :param tmp_path_factory: Pytest's session-scoped temp factory.
+    :param monkeypatch: Pytest monkeypatch fixture; restores the env var.
+    :returns: None.
+    """
+    monkeypatch.setenv("OMNIGENT_CONFIG_HOME", str(tmp_path_factory.mktemp("config-home")))
+
+
+@pytest.fixture()
 def claude_managed_settings() -> None:
     """Opt back in to the host's real Claude Code managed-settings chain.
 
