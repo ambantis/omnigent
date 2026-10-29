@@ -17,6 +17,14 @@ from omnigent.onboarding.opencode_auth import _ENV_PROVIDER_VARS, opencode_auth_
 _PROBE_TIMEOUT_S = 5.0
 HARNESS_ACCOUNT_KEYS = ("codex", "claude", "pi", "opencode")
 
+# Config harness ids behind each account key.
+_FAMILY_HARNESSES = {
+    "codex": ("codex", "codex-native"),
+    "claude": ("claude-sdk", "claude-native"),
+    "pi": ("pi", "pi-native"),
+    "opencode": ("opencode-native",),
+}
+
 
 class _CodexTokenExpired(RuntimeError):
     """Codex explicitly reported a revoked or expired credential."""
@@ -298,6 +306,25 @@ def _opencode_account() -> HarnessAccount | None:
     return {"kind": "providers", "providers": providers}
 
 
+def _command_managed_account(harness: str) -> HarnessAccount | None:
+    """Account for a family whose configured command owns its credentials.
+
+    With ``harness.<id>.auth: command`` the vendor CLI's own login is not what
+    runs, and probing through the command would resolve its credentials on
+    every Settings open. Returns ``None`` when no harness of the family opts in.
+    """
+    from omnigent.config import load_effective_config
+    from omnigent.harness_startup_config import harness_command_owns_auth
+
+    cfg = load_effective_config()
+    if not any(harness_command_owns_auth(h, cfg) for h in _FAMILY_HARNESSES.get(harness, ())):
+        return None
+    return {
+        "kind": "providers",
+        "providers": [{"id": "command", "label": "Configured command", "auth_type": "wrapper"}],
+    }
+
+
 def probe_harness_account(
     harness: str,
     *,
@@ -306,6 +333,9 @@ def probe_harness_account(
     cancel_event: threading.Event | None = None,
 ) -> HarnessAccount | None:
     """Probe one supported harness account without exposing credential material."""
+    managed = _command_managed_account(harness)
+    if managed is not None:
+        return managed
     deadline = time.monotonic() + timeout_s
     probes = {
         "codex": lambda: _codex_account(

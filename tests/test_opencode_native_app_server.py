@@ -21,6 +21,8 @@ from omnigent.harnesses.opencode_native.app_server import (
     parse_opencode_version,
 )
 
+pytestmark = pytest.mark.usefixtures("isolated_user_config")
+
 
 def test_parse_opencode_version() -> None:
     assert parse_opencode_version("opencode 1.17.7") == "1.17.7"

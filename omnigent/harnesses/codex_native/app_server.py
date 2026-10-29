@@ -87,7 +87,6 @@ from omnigent.inner.codex_executor import (
     _databricks_codex_auth_command,
     _databricks_codex_base_url,
     _databricks_codex_config_overrides,
-    _find_codex_cli,
     _populate_codex_home_config,
     _provider_codex_config_overrides,
     codex_extended_catalog_requested,
@@ -99,6 +98,9 @@ from omnigent.inner.codex_executor import (
     materialize_codex_provider_config,
     read_codex_model_catalog,
     write_codex_hooks_file,
+)
+from omnigent.inner.codex_executor import (
+    _find_native_codex_cli as _find_codex_cli,
 )
 from omnigent.inner.databricks_executor import (
     _databricks_gateway_host,
@@ -4159,10 +4161,17 @@ def _codex_login_usable() -> bool:
     doomed (``login_required``) only when the sign-in screen is genuinely
     what the TUI will render.
 
+    A configured ``harness.codex-native.command`` with ``auth: command``
+    supplies its own credentials, so it counts as a usable login.
+
     :returns: ``True`` when a usable stored credential exists.
     """
+    from omnigent.config import load_effective_config
+    from omnigent.harness_startup_config import harness_command_owns_auth
     from omnigent.onboarding.ambient import codex_auth_has_credential
 
+    if harness_command_owns_auth("codex-native", load_effective_config()):
+        return True
     return codex_auth_has_credential(_codex_home_config_source_from_env() / "auth.json")
 
 

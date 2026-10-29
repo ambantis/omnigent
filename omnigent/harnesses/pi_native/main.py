@@ -133,7 +133,8 @@ def _configured_pi_command(env: Mapping[str, str]) -> str:
 
     Reads ``OMNIGENT_PI_PATH`` (canonical) then the deprecated
     ``HARNESS_PI_PATH`` (emitting a one-time-per-process deprecation warning
-    via the shared helper so wording/dedupe stay consistent).
+    via the shared helper so wording/dedupe stay consistent), then config
+    ``harness.pi-native.command``.
     """
     value = env.get(_PI_PATH_ENV, "").strip()
     if value:
@@ -144,7 +145,10 @@ def _configured_pi_command(env: Mapping[str, str]) -> str:
 
         _warn_legacy_path(_LEGACY_HARNESS_PI_PATH_ENV, _PI_PATH_ENV)
         return legacy
-    return _DEFAULT_PI_COMMAND
+    from omnigent.config import load_effective_config
+    from omnigent.harness_startup_config import configured_harness_command
+
+    return configured_harness_command("pi-native", load_effective_config()) or _DEFAULT_PI_COMMAND
 
 
 def resolve_pi_executable(

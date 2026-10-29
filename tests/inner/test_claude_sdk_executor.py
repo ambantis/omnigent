@@ -5802,7 +5802,9 @@ def test_no_precompact_no_compaction_event() -> None:
     _run(_t())
 
 
-def test_find_system_claude_delegates_to_shared_resolver(monkeypatch) -> None:
+def test_find_system_claude_delegates_to_shared_resolver(
+    monkeypatch, isolated_user_config
+) -> None:
     """``_find_system_claude`` resolves claude via the shared resolver with the
     OMNIGENT_CLAUDE_PATH override, so an nvm/npm-installed claude off the host
     daemon's frozen PATH is still found. (The resolver's PATH/override/fallback

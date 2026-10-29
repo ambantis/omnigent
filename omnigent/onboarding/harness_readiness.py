@@ -954,10 +954,41 @@ def _cli_family_availability(canonical: str, install_key: str) -> HarnessAvailab
     )
 
 
+def _command_auth_availability(canonical: str) -> HarnessAvailability | None:
+    """Availability for a harness whose configured command owns its credentials.
+
+    With ``harness.<id>.auth: command`` the command, not the harness's own login
+    or an Omnigent provider, supplies credentials, so only its presence is
+    checked. Returns ``None`` for every other harness.
+    """
+    from omnigent.config import load_effective_config
+    from omnigent.harness_startup_config import (
+        configured_harness_command,
+        harness_command_owns_auth,
+    )
+
+    # ``native-<x>`` names the ``<x>-native`` entry; the SDK ids (``codex``,
+    # ``pi``) read their own entry, as their launch does.
+    if canonical.startswith("native-"):
+        harness = f"{canonical.removeprefix('native-')}-native"
+    else:
+        harness = canonical
+    cfg = load_effective_config()
+    if not harness_command_owns_auth(harness, cfg):
+        return None
+    command = configured_harness_command(harness, cfg)
+    if command is None or resolve_cli_binary(command) is None:
+        return HARNESS_BINARY_MISSING
+    return True
+
+
 def _harness_availability(canonical: str) -> HarnessAvailability:
     """Return picker-facing availability for one canonical harness spelling."""
     if IS_WINDOWS and canonical in NATIVE_HARNESSES:
         return False
+    command_auth = _command_auth_availability(canonical)
+    if command_auth is not None:
+        return command_auth
     if _is_codex_family_harness(canonical):
         from omnigent.harnesses.codex_native.main import _codex_auth_unavailable_reason
 

@@ -226,15 +226,10 @@ def _codex_auth_json_has_available_credential(auth_path: Path) -> bool:
 
 
 def _find_codex_cli() -> str | None:
-    """Return the resolved path to the Codex CLI binary, if any."""
-    from omnigent._platform import resolve_cli_binary
-    from omnigent.onboarding.harness_install import harness_install_spec
-    from omnigent.onboarding.provider_config import OPENAI_FAMILY
+    """Return the resolved path to the Codex CLI binary native sessions run."""
+    from omnigent.inner.codex_executor import _find_native_codex_cli
 
-    spec = harness_install_spec(OPENAI_FAMILY)
-    if spec is None:
-        return None
-    return resolve_cli_binary(spec.binary)
+    return _find_native_codex_cli()
 
 
 def _codex_auth_unavailable_reason() -> HarnessUnavailableReason | None:

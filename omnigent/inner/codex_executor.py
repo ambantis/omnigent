@@ -578,9 +578,33 @@ def _kill_process_tree(process: _Process | None) -> None:
 _CODEX_PATH_ENV = "OMNIGENT_CODEX_PATH"
 
 
-def _find_codex_cli() -> str | None:
-    """Resolve the ``codex`` CLI binary (override → ``PATH`` → global dirs)."""
+def _resolve_codex_cli(harness: str) -> str | None:
+    """Resolve the ``codex`` CLI for *harness*.
+
+    Env override, then config ``harness.<harness>.command``, then ``PATH`` and
+    global dirs.
+    """
+    from omnigent.config import load_effective_config
+    from omnigent.harness_startup_config import configured_harness_command
+
+    if not os.environ.get(_CODEX_PATH_ENV, "").strip():
+        command = configured_harness_command(harness, load_effective_config())
+        if command is not None:
+            return resolve_cli_binary(command)
     return resolve_cli_binary("codex", env_var=_CODEX_PATH_ENV)
+
+
+def _find_codex_cli() -> str | None:
+    """Resolve the ``codex`` CLI for the SDK harness."""
+    return _resolve_codex_cli("codex")
+
+
+def _find_native_codex_cli() -> str | None:
+    """Resolve the Codex CLI for native sessions.
+
+    The app-server and probes run the same binary as the native terminal.
+    """
+    return _resolve_codex_cli("codex-native")
 
 
 async def _codex_cli_version_text(codex_path: str) -> str | None:

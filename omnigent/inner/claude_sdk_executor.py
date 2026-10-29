@@ -1084,9 +1084,17 @@ def _find_system_claude() -> str | None:
     common global install dirs — so an nvm/npm-installed claude off the host
     daemon's frozen ``PATH`` is still found. Prefers the system install over
     the SDK's bundled CLI because the bundled version may be older and send
-    beta flags the Databricks gateway doesn't support. Returns the absolute
-    path, or ``None`` if not found.
+    beta flags the Databricks gateway doesn't support. A configured
+    ``harness.claude-sdk.command`` replaces the ``PATH`` lookup. Returns the
+    absolute path, or ``None`` if not found.
     """
+    from omnigent.config import load_effective_config
+    from omnigent.harness_startup_config import configured_harness_command
+
+    if not os.environ.get(_CLAUDE_PATH_ENV, "").strip():
+        command = configured_harness_command("claude-sdk", load_effective_config())
+        if command is not None:
+            return resolve_cli_binary(command)
     return resolve_cli_binary("claude", env_var=_CLAUDE_PATH_ENV)
 
 

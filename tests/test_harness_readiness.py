@@ -6,6 +6,8 @@ import pytest
 
 from omnigent.onboarding import harness_readiness as hr
 
+pytestmark = pytest.mark.usefixtures("isolated_user_config")
+
 
 @pytest.mark.parametrize("harness", ["pi", "pi-native", "native-pi"])
 def test_pi_harnesses_gate_on_pi_cli(harness: str, monkeypatch: pytest.MonkeyPatch) -> None:

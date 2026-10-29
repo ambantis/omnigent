@@ -946,9 +946,7 @@ def _claude_model_probe_launch(
     :param stream_input: Send control requests and /model over stdin.
     :returns: ``(command, launch_args)`` shared by discovery and its cache key.
     """
-    from omnigent.claude_launcher import resolve_claude_launch
-    from omnigent.config import load_effective_config
-    from omnigent.harness_startup_config import resolve_harness_args, resolve_harness_command
+    from omnigent.claude_launcher import resolve_claude_cli_launch
 
     args = ["-p"]
     if stream_input:
@@ -971,10 +969,7 @@ def _claude_model_probe_launch(
     )
     if claude_config is not None and claude_config.api_key_helper:
         args.extend(("--settings", json.dumps({"apiKeyHelper": claude_config.api_key_helper})))
-    cfg = load_effective_config()
-    command = resolve_harness_command("claude-native", default="claude", cfg=cfg)
-    launch_args = resolve_harness_args("claude-native", tuple(args), cfg=cfg)
-    return resolve_claude_launch(command, launch_args)
+    return resolve_claude_cli_launch(args)
 
 
 def _claude_model_probe_invocation(
